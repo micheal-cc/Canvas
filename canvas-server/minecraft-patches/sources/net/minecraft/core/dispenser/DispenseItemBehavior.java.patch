@@ -1,0 +1,60 @@
+--- a/net/minecraft/core/dispenser/DispenseItemBehavior.java
++++ b/net/minecraft/core/dispenser/DispenseItemBehavior.java
+@@ -408,35 +_,41 @@
+                 }
+                 // Paper end - Call BlockDispenseEvent
+                 io.papermc.paper.threadedregions.RegionizedWorldData worldData = level.getCurrentWorldData(); // Folia - region threading
++                List<org.bukkit.craftbukkit.block.CraftBlockState> capturedBlockStates;
++                org.bukkit.TreeType treeType;
+                 worldData.captureTreeGeneration = true; // CraftBukkit // Folia - region threading
+-                if (!BoneMealItem.growCrop(item, level, blockPos) && !BoneMealItem.growWaterPlant(item, level, blockPos, null)) {
+-                    this.setSuccess(false);
+-                } else if (!level.isClientSide()) {
+-                    level.levelEvent(LevelEvent.PARTICLES_AND_SOUND_PLANT_GROWTH, blockPos, 15);
++                try {
++                    if (!BoneMealItem.growCrop(item, level, blockPos) && !BoneMealItem.growWaterPlant(item, level, blockPos, null)) {
++                        this.setSuccess(false);
++                    } else if (!level.isClientSide()) {
++                        level.levelEvent(LevelEvent.PARTICLES_AND_SOUND_PLANT_GROWTH, blockPos, 15);
++                    }
++                } finally {
++                    worldData.captureTreeGeneration = false;
++
++                    capturedBlockStates = new java.util.ArrayList<>(worldData.capturedBlockStates.values());
++                    worldData.capturedBlockStates.clear();
++
++                    treeType = net.minecraft.world.level.block.SaplingBlock.treeTypeRT.get();
++                    net.minecraft.world.level.block.SaplingBlock.treeTypeRT.set(null);
+                 }
+                 // CraftBukkit start
+-                worldData.captureTreeGeneration = false; // Folia - region threading
+-                if (!worldData.capturedBlockStates.isEmpty()) { // Folia - region threading
+-                    org.bukkit.TreeType treeType = net.minecraft.world.level.block.SaplingBlock.treeTypeRT.get(); // Folia - region threading
+-                    net.minecraft.world.level.block.SaplingBlock.treeTypeRT.set(null); // Folia - region threading
++                if (!capturedBlockStates.isEmpty()) {
+                     org.bukkit.Location location = org.bukkit.craftbukkit.util.CraftLocation.toBukkit(blockPos, level);
+-                    List<org.bukkit.block.BlockState> states = new java.util.ArrayList<>(worldData.capturedBlockStates.values()); // Folia - region threading
+-                    worldData.capturedBlockStates.clear(); // Folia - region threading
+                     org.bukkit.event.world.StructureGrowEvent structureEvent = null;
+                     if (treeType != null) {
+-                        structureEvent = new org.bukkit.event.world.StructureGrowEvent(location, treeType, false, null, states);
++                        structureEvent = new org.bukkit.event.world.StructureGrowEvent(location, treeType, false, null, (List<org.bukkit.block.BlockState>) (List<? extends org.bukkit.block.BlockState>) capturedBlockStates);
+                         org.bukkit.Bukkit.getPluginManager().callEvent(structureEvent);
+                     }
+ 
+-                    org.bukkit.event.block.BlockFertilizeEvent fertilizeEvent = new org.bukkit.event.block.BlockFertilizeEvent(location.getBlock(), null, states);
++                    org.bukkit.event.block.BlockFertilizeEvent fertilizeEvent = new org.bukkit.event.block.BlockFertilizeEvent(location.getBlock(), null, (List<org.bukkit.block.BlockState>) (List<? extends org.bukkit.block.BlockState>) capturedBlockStates);
+                     fertilizeEvent.setCancelled(structureEvent != null && structureEvent.isCancelled());
+                     org.bukkit.Bukkit.getPluginManager().callEvent(fertilizeEvent);
+ 
+                     if (!fertilizeEvent.isCancelled()) {
+-                        for (org.bukkit.block.BlockState state : states) {
+-                            org.bukkit.craftbukkit.block.CraftBlockState craftBlockState = (org.bukkit.craftbukkit.block.CraftBlockState) state;
+-                            craftBlockState.place(craftBlockState.getFlags());
+-                            blockSource.level().checkCapturedTreeStateForObserverNotify(blockPos, craftBlockState); // Paper - notify observers even if grow failed
++                        for (org.bukkit.craftbukkit.block.CraftBlockState snapshot : capturedBlockStates) {
++                            snapshot.place(snapshot.getFlags());
++                            blockSource.level().checkCapturedTreeStateForObserverNotify(blockPos, snapshot); // Paper - notify observers even if grow failed
+                         }
+                     }
+                 }

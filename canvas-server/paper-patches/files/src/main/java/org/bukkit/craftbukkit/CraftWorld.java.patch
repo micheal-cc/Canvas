@@ -9,6 +9,47 @@
          }
          return size;
      }
+@@ -747,24 +_,28 @@
+         io.papermc.paper.threadedregions.RegionizedWorldData worldData = world.getCurrentWorldData(); // Folia - region threading
+         worldData.captureTreeGeneration = true; // Folia - region threading
+         worldData.captureBlockStates = true; // Folia - region threading
+-        boolean grownTree = this.generateTree(loc, type);
+-        worldData.captureBlockStates = false; // Folia - region threading
+-        worldData.captureTreeGeneration = false; // Folia - region threading
++        List<CraftBlockState> capturedBlockStates;
++        boolean grownTree;
++        try {
++            grownTree = this.generateTree(loc, type);
++        } finally {
++            worldData.captureTreeGeneration = false;
++            worldData.captureBlockStates = false;
++
++            capturedBlockStates = new ArrayList<>(worldData.capturedBlockStates.values());
++            worldData.capturedBlockStates.clear();
++        }
+         if (grownTree) { // Copy block data to delegate
+-            for (BlockState blockstate : worldData.capturedBlockStates.values()) { // Folia - region threading
+-                BlockPos position = ((CraftBlockState) blockstate).getPosition();
++            for (CraftBlockState snapshot : capturedBlockStates) {
++                BlockPos position = snapshot.getPosition();
+                 net.minecraft.world.level.block.state.BlockState oldBlock = this.world.getBlockState(position);
+-                int flags = ((CraftBlockState) blockstate).getFlags();
+-                delegate.setBlockData(blockstate.getX(), blockstate.getY(), blockstate.getZ(), blockstate.getBlockData());
++                int flags = snapshot.getFlags();
++                delegate.setBlockData(snapshot.getX(), snapshot.getY(), snapshot.getZ(), snapshot.getBlockData());
+                 net.minecraft.world.level.block.state.BlockState newBlock = this.world.getBlockState(position);
+                 this.world.notifyAndUpdatePhysics(position, null, oldBlock, newBlock, newBlock, flags, net.minecraft.world.level.block.Block.UPDATE_LIMIT);
+             }
+-            worldData.capturedBlockStates.clear(); // Folia - region threading
+-            return true;
+-        } else {
+-            worldData.capturedBlockStates.clear(); // Folia - region threading
+-            return false;
+         }
++        return grownTree;
+     }
+ 
+     @Override
 @@ -1147,12 +_,13 @@
      public void save(boolean flush) {
          org.spigotmc.AsyncCatcher.catchOp("world save"); // Spigot

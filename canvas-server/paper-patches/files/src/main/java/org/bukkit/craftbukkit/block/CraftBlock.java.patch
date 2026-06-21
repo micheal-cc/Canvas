@@ -9,3 +9,56 @@
      }
  
      // Paper start
+@@ -605,31 +_,38 @@
+ 
+         io.papermc.paper.threadedregions.RegionizedWorldData worldData = world.getCurrentWorldData(); // Folia - region threading
+         // SPIGOT-6895: Call StructureGrowEvent and BlockFertilizeEvent
++        List<CraftBlockState> capturedBlockStates;
++        TreeType treeType;
+         worldData.captureTreeGeneration = true; // Folia - region threading
+-        InteractionResult result = BoneMealItem.applyBonemeal(context);
+-        worldData.captureTreeGeneration = false; // Folia - region threading
+-
+-        if (!worldData.capturedBlockStates.isEmpty()) { // Folia - region threading
+-            TreeType treeType = SaplingBlock.treeTypeRT.get(); // Folia - region threading
+-            SaplingBlock.treeTypeRT.set(null); // Folia - region threading
+-            List<BlockState> states = new ArrayList<>(worldData.capturedBlockStates.values()); // Folia - region threading
+-            worldData.capturedBlockStates.clear(); // Folia - region threading
++        InteractionResult result;
++        try {
++            result = BoneMealItem.applyBonemeal(context);
++        } finally {
++            worldData.captureTreeGeneration = false;
++
++            capturedBlockStates = new ArrayList<>(worldData.capturedBlockStates.values());
++            worldData.capturedBlockStates.clear();
++
++            treeType = SaplingBlock.treeTypeRT.get();
++            SaplingBlock.treeTypeRT.set(null);
++        }
++
++        if (!capturedBlockStates.isEmpty()) {
+             StructureGrowEvent structureEvent = null;
+ 
+             if (treeType != null) {
+-                structureEvent = new StructureGrowEvent(this.getLocation(), treeType, true, null, states);
++                structureEvent = new StructureGrowEvent(this.getLocation(), treeType, true, null, (List<BlockState>) (List<? extends BlockState>) capturedBlockStates);
+                 Bukkit.getPluginManager().callEvent(structureEvent);
+             }
+ 
+-            event = new BlockFertilizeEvent(CraftBlock.at(world, this.getPosition()), null, states);
++            event = new BlockFertilizeEvent(CraftBlock.at(world, this.getPosition()), null, (List<BlockState>) (List<? extends BlockState>) capturedBlockStates);
+             event.setCancelled(structureEvent != null && structureEvent.isCancelled());
+             Bukkit.getPluginManager().callEvent(event);
+ 
+             if (!event.isCancelled()) {
+-                for (BlockState state : states) {
+-                    CraftBlockState craftBlockState = (CraftBlockState) state;
+-                    craftBlockState.place(craftBlockState.getFlags());
+-                    world.checkCapturedTreeStateForObserverNotify(this.position, craftBlockState); // Paper - notify observers even if grow failed
++                for (CraftBlockState snapshot : capturedBlockStates) {
++                    snapshot.place(snapshot.getFlags());
++                    world.checkCapturedTreeStateForObserverNotify(this.position, snapshot); // Paper - notify observers even if grow failed
+                 }
+             }
+         }
